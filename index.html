@@ -41,6 +41,7 @@ button {
 img {
   display: block;
   margin: 0 auto;
+  cursor: pointer;
 }
 </style>
 </head>
@@ -52,29 +53,26 @@ img {
 <!-- タイトル -->
 <div id="titleScreen">
   <h1>おさんぽアシスタント</h1>
-  <button onclick="startGame()">スタート</button>
-  <button onclick="showTalk()">おしゃべり</button>
+  <button id="startBtn">スタート</button>
+  <button id="talkBtn">おしゃべり</button>
 </div>
 
-<!-- ゲーム -->
+<!-- 散歩 -->
 <div id="gameScreen" style="display:none;">
   <div class="card">
     <h1 id="distance">0 km</h1>
-    <p id="message">がんばってね</p>
     <h2 id="time">0 秒</h2>
-    <p>ポイント: <span id="points">0</span></p>
+    <p id="spotName">現在地：なし</p>
   </div>
 
   <div id="map" style="width:100%; height:300px; border-radius:20px;"></div>
 
   <img id="character" src="normal.png" width="200">
-  <div id="characterSelect"></div>
 
   <br>
-  <button onclick="start()">開始</button>
-  <button onclick="stop()">停止</button>
-  <button onclick="reset()">リセット</button>
-  <button onclick="backTitle()">戻る</button>
+  <button id="startWalk">開始</button>
+  <button id="stopWalk">停止</button>
+  <button id="backBtn1">戻る</button>
 </div>
 
 <!-- おしゃべり -->
@@ -83,74 +81,49 @@ img {
     <p id="talkText">タップしてね</p>
   </div>
 
-  <img id="talkCharacter" src="normal.png" width="200" onclick="talk()">
+  <img id="talkCharacter" src="normal.png" width="200">
 
   <br>
-  <button onclick="backTitle()">戻る</button>
+  <button id="backBtn2">戻る</button>
 </div>
 
 </div>
 
 <script>
+document.addEventListener("DOMContentLoaded", () => {
 
-/* ---------- 要素取得 ---------- */
-
+/* 要素 */
 const distance = document.getElementById("distance");
 const time = document.getElementById("time");
-const pointsSpan = document.getElementById("points");
-const character = document.getElementById("character");
-const characterSelect = document.getElementById("characterSelect");
 const talkText = document.getElementById("talkText");
-const talkCharacter = document.getElementById("talkCharacter");
+const spotName = document.getElementById("spotName");
 
-/* ---------- 画面切り替え ---------- */
+const titleScreen = document.getElementById("titleScreen");
+const gameScreen = document.getElementById("gameScreen");
+const talkScreen = document.getElementById("talkScreen");
 
-function startGame() {
+/* 画面切替 */
+startBtn.onclick = () => {
   titleScreen.style.display = "none";
   gameScreen.style.display = "block";
-}
+};
 
-function showTalk() {
+talkBtn.onclick = () => {
   titleScreen.style.display = "none";
   talkScreen.style.display = "block";
-}
+};
 
-function backTitle() {
+backBtn1.onclick = backBtn2.onclick = () => {
   titleScreen.style.display = "block";
   gameScreen.style.display = "none";
   talkScreen.style.display = "none";
-}
+};
 
-/* ---------- 状態 ---------- */
+/* Mapbox */
+mapboxgl.accessToken = "あなたのトークン";
 
-let lastLat = null;
-let lastLon = null;
-let totalDistance = 0;
-let watchId = null;
-
-let startTime = null;
-let elapsedTime = 0;
-let timerInterval = null;
-
-let points = 0;
-
-/* ---------- キャラ ---------- */
-
-const characters = [
-  { name: "ノーマル", img: "normal.png", unlock: 0 },
-  { name: "元気", img: "genki.png", unlock: 100 },
-  { name: "クール", img: "cool.png", unlock: 300 }
-];
-
-let unlocked = [true, false, false];
-
-/* ---------- Mapbox ---------- */
-
-mapboxgl.accessToken = "pk.eyJ1IjoibWFzeXV0ZW4iLCJhIjoiY21ueDJ0OG1tMDAwbzJycTBreGJ0c2VvaCJ9.J8pL7ECfCDthwvTOLHgCEQ";
-
-let map;
-let marker;
-let path = [];
+let map, marker, path = [];
+let currentSpot = null;
 
 function initMap(lat, lon) {
   map = new mapboxgl.Map({
@@ -160,63 +133,61 @@ function initMap(lat, lon) {
     zoom: 16
   });
 
-  marker = new mapboxgl.Marker()
-    .setLngLat([lon, lat])
-    .addTo(map);
+  marker = new mapboxgl.Marker().setLngLat([lon, lat]).addTo(map);
 
   map.on("load", () => {
     map.addSource("route", {
       type: "geojson",
-      data: {
-        type: "Feature",
-        geometry: {
-          type: "LineString",
-          coordinates: []
-        }
-      }
+      data: { type:"Feature", geometry:{ type:"LineString", coordinates:[] } }
     });
 
     map.addLayer({
       id: "route",
       type: "line",
       source: "route",
-      paint: {
-        "line-color": "#ff0000",
-        "line-width": 4
-      }
+      paint: { "line-color":"#ff0000", "line-width":4 }
     });
   });
 }
 
-/* ---------- 距離 ---------- */
+/* 距離 */
+let lastLat=null,lastLon=null,totalDistance=0;
+let startTime=null, timer;
+
+/* スポット（例） */
+const spots = [
+  { name:"駅", lat:35.681236, lon:139.767125, type:"station" },
+  { name:"公園", lat:35.6895, lon:139.6917, type:"park" }
+];
 
 function getDistance(lat1, lon1, lat2, lon2) {
-  const R = 6371;
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLon = (lon2 - lon1) * Math.PI / 180;
-
-  const a =
-    Math.sin(dLat/2)**2 +
-    Math.cos(lat1*Math.PI/180) *
-    Math.cos(lat2*Math.PI/180) *
-    Math.sin(dLon/2)**2;
-
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+  const R=6371;
+  const dLat=(lat2-lat1)*Math.PI/180;
+  const dLon=(lon2-lon1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+
+  Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
+  Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
-/* ---------- 開始 ---------- */
+function getNearbySpot(lat, lon) {
+  for (let s of spots) {
+    const d = getDistance(lat, lon, s.lat, s.lon);
+    if (d < 0.2) return s;
+  }
+  return null;
+}
 
-function start() {
-  if (timerInterval) return;
+/* 開始 */
+startWalk.onclick = () => {
 
   startTime = Date.now();
+  timer = setInterval(()=>{
+    time.textContent = Math.floor((Date.now()-startTime)/1000)+" 秒";
+  },1000);
 
-  timerInterval = setInterval(() => {
-    const total = elapsedTime + (Date.now() - startTime);
-    time.textContent = Math.floor(total/1000) + " 秒";
-  }, 1000);
+  navigator.geolocation.watchPosition(pos => {
 
-  watchId = navigator.geolocation.watchPosition((pos) => {
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
 
@@ -228,135 +199,51 @@ function start() {
     path.push([lon, lat]);
     if (map.getSource("route")) {
       map.getSource("route").setData({
-        type: "Feature",
-        geometry: { type: "LineString", coordinates: path }
+        type:"Feature",
+        geometry:{type:"LineString",coordinates:path}
       });
     }
 
-    if (lastLat !== null) {
-      const d = getDistance(lastLat, lastLon, lat, lon);
-
-      if (d > 0.01) {
+    if (lastLat!==null) {
+      const d = getDistance(lastLat,lastLon,lat,lon);
+      if (d>0.01) {
         totalDistance += d;
-        points += d * 100;
-
-        distance.textContent = totalDistance.toFixed(3) + " km";
-        pointsSpan.textContent = Math.floor(points);
-
-        checkUnlock();
-        save();
+        distance.textContent = totalDistance.toFixed(3)+" km";
       }
     }
 
-    lastLat = lat;
-    lastLon = lon;
-  });
-}
+    lastLat=lat;
+    lastLon=lon;
 
-/* ---------- 停止 ---------- */
+    /* スポット判定 */
+    const spot = getNearbySpot(lat, lon);
+    currentSpot = spot ? spot.type : null;
+    spotName.textContent = "現在地：" + (spot ? spot.name : "なし");
 
-function stop() {
-  if (watchId) navigator.geolocation.clearWatch(watchId);
-
-  if (timerInterval) {
-    clearInterval(timerInterval);
-    elapsedTime += Date.now() - startTime;
-    timerInterval = null;
-  }
-}
-
-/* ---------- リセット ---------- */
-
-function reset() {
-  stop();
-
-  totalDistance = 0;
-  points = 0;
-  elapsedTime = 0;
-  path = [];
-
-  if (map && map.getSource("route")) {
-    map.getSource("route").setData({
-      type: "Feature",
-      geometry: { type: "LineString", coordinates: [] }
-    });
-  }
-
-  distance.textContent = "0 km";
-  pointsSpan.textContent = "0";
-  time.textContent = "0 秒";
-}
-
-/* ---------- 解放 ---------- */
-
-function checkUnlock() {
-  characters.forEach((ch, i) => {
-    if (!unlocked[i] && points >= ch.unlock) {
-      unlocked[i] = true;
-      alert(ch.name + " 解放！");
-      updateCharacterSelect();
-    }
-  });
-}
-
-/* ---------- キャラ選択 ---------- */
-
-function updateCharacterSelect() {
-  characterSelect.innerHTML = "";
-
-  characters.forEach((ch, i) => {
-    if (unlocked[i]) {
-      const btn = document.createElement("button");
-      btn.textContent = ch.name;
-      btn.onclick = () => character.src = ch.img;
-      characterSelect.appendChild(btn);
-    }
-  });
-}
-
-/* ---------- 保存 ---------- */
-
-function save() {
-  localStorage.setItem("points", points);
-  localStorage.setItem("unlocked", JSON.stringify(unlocked));
-}
-
-function load() {
-  points = Number(localStorage.getItem("points")) || 0;
-  unlocked = JSON.parse(localStorage.getItem("unlocked")) || unlocked;
-
-  pointsSpan.textContent = Math.floor(points);
-  updateCharacterSelect();
-}
-
-load();
-
-/* ---------- 会話 ---------- */
-
-const talkData = {
-  normal: { lines: ["今日もいい感じだね","無理しすぎないでね"], img: "normal.png" },
-  walk: { lines: ["もうちょっと歩こ？","いいペースだよ！"], img: "genki.png" },
-  free: { lines: ["のんびりでいいよ","気楽にいこう"], img: "cool.png" }
+  }, ()=> alert("GPS許可してね"));
 };
 
-function getTalkCategory() {
-  if (totalDistance > 1) return "walk";
-  if (points > 200) return "free";
-  return "normal";
-}
+/* 停止 */
+stopWalk.onclick = () => {
+  navigator.geolocation.clearWatch();
+  clearInterval(timer);
+};
 
-function talk() {
-  const data = talkData[getTalkCategory()];
-  const line = data.lines[Math.floor(Math.random()*data.lines.length)];
+/* 会話 */
+const talkData = {
+  normal:["のんびりいこう","いい天気だね"],
+  station:["電車乗る？","人多いね〜"],
+  park:["緑が気持ちいいね","ちょっと休む？"]
+};
 
-  talkText.textContent = line;
-  talkCharacter.src = data.img;
-}
+talkCharacter.onclick = () => {
+  const key = currentSpot || "normal";
+  const list = talkData[key];
+  talkText.textContent = list[Math.floor(Math.random()*list.length)];
+};
 
-updateCharacterSelect();
-
+});
 </script>
 
 </body>
 </html>
-<link rel="icon" href="favicon.ico">
