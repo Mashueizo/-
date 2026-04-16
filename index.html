@@ -38,10 +38,10 @@ button {
   color: white;
 }
 
-img {
+video {
   display: block;
   margin: 0 auto;
-  cursor: pointer;
+  border-radius: 20px;
 }
 </style>
 </head>
@@ -59,6 +59,7 @@ img {
 
 <!-- 散歩 -->
 <div id="gameScreen" style="display:none;">
+
   <div class="card">
     <h1 id="distance">0 km</h1>
     <h2 id="time">0 秒</h2>
@@ -67,9 +68,10 @@ img {
 
   <div id="map" style="width:100%; height:300px; border-radius:20px;"></div>
 
+  <!-- ★キャラ動画 -->
   <video id="character" width="200" autoplay muted loop playsinline>
-  <source src="walk.mp4" type="video/mp4">
-</video>
+    <source src="normal.mp4" type="video/mp4">
+  </video>
 
   <br>
   <button id="startWalk">開始</button>
@@ -79,11 +81,14 @@ img {
 
 <!-- おしゃべり -->
 <div id="talkScreen" style="display:none;">
+
   <div class="card">
     <p id="talkText">タップしてね</p>
   </div>
 
-  <img id="talkCharacter" src="normal.png" width="200">
+  <video id="talkCharacter" width="200" autoplay muted loop playsinline>
+    <source src="normal.mp4" type="video/mp4">
+  </video>
 
   <br>
   <button id="backBtn2">戻る</button>
@@ -94,17 +99,24 @@ img {
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
-/* 要素 */
+/* =========================
+   要素
+========================= */
 const distance = document.getElementById("distance");
 const time = document.getElementById("time");
 const talkText = document.getElementById("talkText");
 const spotName = document.getElementById("spotName");
 
+const character = document.getElementById("character");
+const talkCharacter = document.getElementById("talkCharacter");
+
 const titleScreen = document.getElementById("titleScreen");
 const gameScreen = document.getElementById("gameScreen");
 const talkScreen = document.getElementById("talkScreen");
 
-/* 画面切替 */
+/* =========================
+   画面切替
+========================= */
 startBtn.onclick = () => {
   titleScreen.style.display = "none";
   gameScreen.style.display = "block";
@@ -121,11 +133,34 @@ backBtn1.onclick = backBtn2.onclick = () => {
   talkScreen.style.display = "none";
 };
 
-/* Mapbox */
+/* =========================
+   キャラ制御（超重要）
+========================= */
+function setCharacter(src) {
+  character.src = src;
+  character.load();
+  character.play();
+}
+
+function setTalkCharacter(src) {
+  talkCharacter.src = src;
+  talkCharacter.load();
+  talkCharacter.play();
+}
+
+/* =========================
+   Mapbox
+========================= */
 mapboxgl.accessToken = "pk.eyJ1IjoibWFzeXV0ZW4iLCJhIjoiY21ueDJ0OG1tMDAwbzJycTBreGJ0c2VvaCJ9.J8pL7ECfCDthwvTOLHgCEQ";
 
 let map, marker, path = [];
 let currentSpot = null;
+
+/* スポット */
+const spots = [
+  { name:"駅", lat:35.681236, lon:139.767125, type:"station" },
+  { name:"公園", lat:35.6895, lon:139.6917, type:"park" }
+];
 
 function initMap(lat, lon) {
   map = new mapboxgl.Map({
@@ -152,16 +187,14 @@ function initMap(lat, lon) {
   });
 }
 
-/* 距離 */
+/* =========================
+   距離・状態
+========================= */
 let lastLat=null,lastLon=null,totalDistance=0;
 let startTime=null, timer;
+let watchId=null;
 
-/* スポット（例） */
-const spots = [
-  { name:"駅", lat:35.681236, lon:139.767125, type:"station" },
-  { name:"公園", lat:35.6895, lon:139.6917, type:"park" }
-];
-
+/* 距離計算 */
 function getDistance(lat1, lon1, lat2, lon2) {
   const R=6371;
   const dLat=(lat2-lat1)*Math.PI/180;
@@ -180,15 +213,21 @@ function getNearbySpot(lat, lon) {
   return null;
 }
 
-/* 開始 */
+/* =========================
+   開始
+========================= */
 startWalk.onclick = () => {
+
+  if (watchId !== null) return;
 
   startTime = Date.now();
   timer = setInterval(()=>{
     time.textContent = Math.floor((Date.now()-startTime)/1000)+" 秒";
   },1000);
 
-  navigator.geolocation.watchPosition(pos => {
+  setCharacter("walk.mp4");
+
+  watchId = navigator.geolocation.watchPosition(pos => {
 
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
@@ -199,6 +238,7 @@ startWalk.onclick = () => {
     map.setCenter([lon, lat]);
 
     path.push([lon, lat]);
+
     if (map.getSource("route")) {
       map.getSource("route").setData({
         type:"Feature",
@@ -206,18 +246,17 @@ startWalk.onclick = () => {
       });
     }
 
-    if (lastLat!==null) {
+    if (lastLat !== null) {
       const d = getDistance(lastLat,lastLon,lat,lon);
-      if (d>0.01) {
+      if (d > 0.01) {
         totalDistance += d;
         distance.textContent = totalDistance.toFixed(3)+" km";
       }
     }
 
-    lastLat=lat;
-    lastLon=lon;
+    lastLat = lat;
+    lastLon = lon;
 
-    /* スポット判定 */
     const spot = getNearbySpot(lat, lon);
     currentSpot = spot ? spot.type : null;
     spotName.textContent = "現在地：" + (spot ? spot.name : "なし");
@@ -225,13 +264,24 @@ startWalk.onclick = () => {
   }, ()=> alert("GPS許可してね"));
 };
 
-/* 停止 */
+/* =========================
+   停止
+========================= */
 stopWalk.onclick = () => {
-  navigator.geolocation.clearWatch();
+
+  if (watchId !== null) {
+    navigator.geolocation.clearWatch(watchId);
+    watchId = null;
+  }
+
   clearInterval(timer);
+
+  setCharacter("normal.mp4");
 };
 
-/* 会話 */
+/* =========================
+   会話
+========================= */
 const talkData = {
   normal:["のんびりいこう","いい天気だね"],
   station:["電車乗る？","人多いかもね"],
