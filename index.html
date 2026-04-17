@@ -11,12 +11,20 @@
 body {
   margin: 0;
   font-family: 'M PLUS Rounded 1c', sans-serif;
-  background: url("aozora.jpeg") no-repeat center center;
+
+  background: url("aozora.jpeg") no-repeat center center fixed;
   background-size: cover;
 }
 
-.day { background: linear-gradient(#cfe9ff, #ffffff); }
-.night { background: linear-gradient(#0b1026, #1a1f3a); color: white; }
+/* 上書きしないようにする */
+.day {
+  background: none;
+}
+
+.night {
+  background: rgba(0,0,0,0.5); /* 暗くするだけ */
+  color: white;
+}
 
 .centerBox {
   max-width: 420px;
