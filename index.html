@@ -74,6 +74,20 @@ button {
   background: white;
   color: black;
 }
+  <div class="card">
+
+  <div class="statusRow">
+    <h2 id="distance">0 km</h2>
+
+    <video id="charVideo" autoplay muted loop playsinline>
+      <source src="/-/normal.mp4" type="video/mp4">
+    </video>
+  </div>
+
+  <h3 id="time">0 秒</h3>
+  <p id="spotName">現在地：なし</p>
+
+</div>
 </style>
 </head>
 
@@ -82,11 +96,19 @@ button {
 <div class="centerBox">
 
 <div class="card">
-  <h2 id="distance">0 km</h2>
+
+  <div class="statusRow">
+    <h2 id="distance">0 km</h2>
+
+    <video id="charVideo" autoplay muted loop playsinline>
+      <source src="/-/normal.mp4" type="video/mp4">
+    </video>
+  </div>
+
   <h3 id="time">0 秒</h3>
   <p id="spotName">現在地：なし</p>
-</div>
 
+</div>
 <div id="map"></div>
 
 <button id="startBtn">スタート</button>
