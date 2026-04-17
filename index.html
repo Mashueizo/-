@@ -123,14 +123,24 @@ const story = {
 };
 
 /* ===== スポットAPI（Mapbox） ===== */
-mapboxgl.accessToken = "pk.eyJ1IjoibWFzeXV0ZW4iLCJhIjoiY21ueDJ0OG1tMDAwbzJycTBreGJ0c2VvaCJ9.J8pL7ECfCDthwvTOLHgCEQ";
+ const MAPBOX_TOKEN = "pk.eyJ1IjoibWFzeXV0ZW4iLCJhIjoiY21ueDJ0OG1tMDAwbzJycTBreGJ0c2VvaCJ9.J8pL7ECfCDthwvTOLHgCEQ";
+
+mapboxgl.accessToken = MAPBOX_TOKEN;
 
 async function getNearbyPlaces(lon, lat, type) {
-  const res = await fetch(
-    `https://api.mapbox.com/geocoding/v5/mapbox.places/${type}.json` +
-    `?proximity=${lon},${lat}&limit=3&access_pk.eyJ1IjoibWFzeXV0ZW4iLCJhIjoiY21ueDJ0OG1tMDAwbzJycTBreGJ0c2VvaCJ9.J8pL7ECfCDthwvTOLHgCEQ`
-  );
-  return (await res.json()).features;
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${type}.json` +
+      `?proximity=${lon},${lat}&limit=3&access_token=${MAPBOX_TOKEN}`
+    );
+
+    const data = await res.json();
+
+    return data.features || [];
+  } catch (e) {
+    console.log("APIエラー", e);
+    return [];
+  }
 }
 
 /* ===== 昼夜判定 ===== */
