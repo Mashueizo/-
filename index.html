@@ -44,11 +44,19 @@ button {
   background: #6c9cff;
   color: white;
 }
+  .statusRow {
+  display: flex;
+  align-items: center;
+}
   #charVideo {
   width: 300px;
   height: 300px;
   margin-left: 5x;
 }
+  #startBtn {
+  margin-left: 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
 
 /* ===== シナリオUI ===== */
 #scenarioUI {
@@ -87,10 +95,14 @@ button {
     <video id="charVideo" autoplay muted loop playsinline>
       <source src="/-/normal.mp4" type="video/mp4">
     </video>
+
+    <button id="startBtn">▶</button>
   </div>
 
   <h3 id="time">0 秒</h3>
   <p id="spotName">現在地：なし</p>
+
+</div>
 
 </div>
 </style>
