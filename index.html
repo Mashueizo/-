@@ -4,294 +4,258 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c&display=swap" rel="stylesheet">
-
 <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
 <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
 
 <style>
 body {
   font-family: 'M PLUS Rounded 1c', sans-serif;
-  text-align: center;
-  background: linear-gradient(#cfe9ff, #f7f7fb);
   margin: 0;
+  text-align: center;
+  transition: 0.5s;
+}
+
+/* 昼夜演出 */
+.day {
+  background: linear-gradient(#cfe9ff, #ffffff);
+}
+
+.night {
+  background: linear-gradient(#0b1026, #1a1f3a);
+  color: white;
 }
 
 .centerBox {
-  max-width: 400px;
+  max-width: 420px;
   margin: auto;
-  padding-top: 20px;
+  padding: 10px;
 }
 
 .card {
-  background: white;
+  background: rgba(255,255,255,0.9);
   border-radius: 20px;
-  padding: 20px;
+  padding: 15px;
   margin: 10px;
+}
+
+.night .card {
+  background: rgba(30,30,50,0.9);
+  color: white;
 }
 
 button {
   margin: 5px;
   padding: 10px;
-  border-radius: 20px;
+  border-radius: 15px;
   border: none;
   background: #6c9cff;
   color: white;
 }
 
-video {
-  display: block;
-  margin: 0 auto;
+#map {
+  width: 100%;
+  height: 300px;
   border-radius: 20px;
+}
+
+#questBox {
+  display: none;
 }
 </style>
 </head>
 
-<body>
+<body class="day">
 
 <div class="centerBox">
 
-<!-- タイトル -->
-<div id="titleScreen">
-  <h1>おさんぽアシスタント</h1>
-  <button id="startBtn">スタート</button>
-  <button id="talkBtn">おしゃべり</button>
+<!-- ストーリー -->
+<div class="card">
+  <h3>ストーリー</h3>
+  <p id="storyText">まだ始まっていない</p>
 </div>
 
-<!-- 散歩 -->
-<div id="gameScreen" style="display:none;">
-
-  <div class="card">
-    <h1 id="distance">0 km</h1>
-    <h2 id="time">0 秒</h2>
-    <p id="spotName">現在地：なし</p>
-  </div>
-
-  <div id="map" style="width:100%; height:300px; border-radius:20px;"></div>
-
-  <!-- ★キャラ動画 -->
-  <video id="character" width="200" autoplay muted loop playsinline>
-    <source src="normal.mp4" type="video/mp4">
-  </video>
-
-  <br>
-  <button id="startWalk">開始</button>
-  <button id="stopWalk">停止</button>
-  <button id="backBtn1">戻る</button>
+<!-- クエスト -->
+<div id="questBox" class="card">
+  <p id="questText"></p>
+  <button id="acceptQuest">行く</button>
+  <button id="rejectQuest">やめる</button>
 </div>
 
-<!-- おしゃべり -->
-<div id="talkScreen" style="display:none;">
-
-  <div class="card">
-    <p id="talkText">タップしてね</p>
-  </div>
-
-  <video id="talkCharacter" width="200" autoplay muted loop playsinline>
-    <source src="normal.mp4" type="video/mp4">
-  </video>
-
-  <br>
-  <button id="backBtn2">戻る</button>
+<!-- 状態 -->
+<div class="card">
+  <h2 id="distance">0 km</h2>
+  <h3 id="time">0 秒</h3>
+  <p id="spotName">現在地：なし</p>
+  <p>レベル：<span id="level">1</span></p>
 </div>
+
+<div id="map"></div>
+
+<button id="startBtn">スタート</button>
+<button id="stopBtn">停止</button>
 
 </div>
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
-/* =========================
-   要素
-========================= */
-const distance = document.getElementById("distance");
-const time = document.getElementById("time");
-const talkText = document.getElementById("talkText");
-const spotName = document.getElementById("spotName");
-
-const character = document.getElementById("character");
-const talkCharacter = document.getElementById("talkCharacter");
-
-const titleScreen = document.getElementById("titleScreen");
-const gameScreen = document.getElementById("gameScreen");
-const talkScreen = document.getElementById("talkScreen");
-
-/* =========================
-   画面切替
-========================= */
-startBtn.onclick = () => {
-  titleScreen.style.display = "none";
-  gameScreen.style.display = "block";
-};
-
-talkBtn.onclick = () => {
-  titleScreen.style.display = "none";
-  talkScreen.style.display = "block";
-};
-
-backBtn1.onclick = backBtn2.onclick = () => {
-  titleScreen.style.display = "block";
-  gameScreen.style.display = "none";
-  talkScreen.style.display = "none";
-};
-
-/* =========================
-   キャラ制御（超重要）
-========================= */
-function setCharacter(src) {
-  character.src = src;
-  character.load();
-  character.play();
-}
-
-function setTalkCharacter(src) {
-  talkCharacter.src = src;
-  talkCharacter.load();
-  talkCharacter.play();
-}
-
-/* =========================
-   Mapbox
-========================= */
-mapboxgl.accessToken = "pk.eyJ1IjoibWFzeXV0ZW4iLCJhIjoiY21ueDJ0OG1tMDAwbzJycTBreGJ0c2VvaCJ9.J8pL7ECfCDthwvTOLHgCEQ";
-
+/* ===== 状態 ===== */
 let map, marker, path = [];
-let currentSpot = null;
+let watchId = null;
+let lastLat = null, lastLon = null;
 
-/* スポット */
-const spots = [
-  { name:"駅", lat:35.681236, lon:139.767125, type:"station" },
-  { name:"公園", lat:35.6895, lon:139.6917, type:"park" }
-];
+let totalDistance = 0;
+let startTime = null;
+let timer;
 
+let player = { level: 1, exp: 0 };
+
+let currentQuest = null;
+
+/* ===== ストーリー ===== */
+const story = {
+  1:"あなたは見知らぬ街で目を覚ました。",
+  2:"この街はどこか不自然だ。",
+  3:"歩くことで何かが見えてくる。",
+  4:"誰かがあなたを見ている気がする。",
+  5:"歩き続けろという声がする。"
+};
+
+/* ===== スポットAPI（Mapbox） ===== */
+mapboxgl.accessToken = "YOUR_MAPBOX_TOKEN";
+
+async function getNearbyPlaces(lon, lat, type) {
+  const res = await fetch(
+    `https://api.mapbox.com/geocoding/v5/mapbox.places/${type}.json` +
+    `?proximity=${lon},${lat}&limit=3&access_token=YOUR_MAPBOX_TOKEN`
+  );
+  return (await res.json()).features;
+}
+
+/* ===== 昼夜判定 ===== */
+function updateDayNight() {
+  const h = new Date().getHours();
+  const isNight = (h < 6 || h >= 18);
+
+  document.body.className = isNight ? "night" : "day";
+}
+
+/* ===== 距離 ===== */
+function getDistance(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2-lat1)*Math.PI/180;
+  const dLon = (lon2-lon1)*Math.PI/180;
+  const a =
+    Math.sin(dLat/2)**2 +
+    Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180) *
+    Math.sin(dLon/2)**2;
+
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+/* ===== クエスト生成 ===== */
+function generateQuest() {
+  const d = 0.5 + Math.random()*2;
+
+  currentQuest = {
+    target: d,
+    reward: Math.floor(d*100)
+  };
+
+  document.getElementById("questText").textContent =
+    `${d.toFixed(1)}km歩いてみよう`;
+}
+
+/* ===== ストーリー ===== */
+function showStory() {
+  const text = story[player.level];
+  if (text) {
+    document.getElementById("storyText").textContent = text;
+  }
+}
+
+/* ===== EXP ===== */
+function addExp(exp) {
+  player.exp += exp;
+
+  if (player.exp >= player.level * 100) {
+    player.level++;
+    player.exp = 0;
+
+    document.getElementById("level").textContent = player.level;
+    showStory();
+  }
+}
+
+/* ===== マップ ===== */
 function initMap(lat, lon) {
   map = new mapboxgl.Map({
-    container: "map",
-    style: "mapbox://styles/mapbox/streets-v11",
-    center: [lon, lat],
-    zoom: 16
+    container:"map",
+    style:"mapbox://styles/mapbox/streets-v11",
+    center:[lon,lat],
+    zoom:16
   });
 
-  marker = new mapboxgl.Marker().setLngLat([lon, lat]).addTo(map);
-
-  map.on("load", () => {
-    map.addSource("route", {
-      type: "geojson",
-      data: { type:"Feature", geometry:{ type:"LineString", coordinates:[] } }
-    });
-
-    map.addLayer({
-      id: "route",
-      type: "line",
-      source: "route",
-      paint: { "line-color":"#ff0000", "line-width":4 }
-    });
-  });
+  marker = new mapboxgl.Marker().setLngLat([lon,lat]).addTo(map);
 }
 
-/* =========================
-   距離・状態
-========================= */
-let lastLat=null,lastLon=null,totalDistance=0;
-let startTime=null, timer;
-let watchId=null;
+/* ===== スタート ===== */
+document.getElementById("startBtn").onclick = () => {
 
-/* 距離計算 */
-function getDistance(lat1, lon1, lat2, lon2) {
-  const R=6371;
-  const dLat=(lat2-lat1)*Math.PI/180;
-  const dLon=(lon2-lon1)*Math.PI/180;
-  const a=Math.sin(dLat/2)**2+
-  Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*
-  Math.sin(dLon/2)**2;
-  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
-}
-
-function getNearbySpot(lat, lon) {
-  for (let s of spots) {
-    const d = getDistance(lat, lon, s.lat, s.lon);
-    if (d < 0.2) return s;
-  }
-  return null;
-}
-
-/* =========================
-   開始
-========================= */
-startWalk.onclick = () => {
-
-  if (watchId !== null) return;
-
+  updateDayNight();
   startTime = Date.now();
-  timer = setInterval(()=>{
-    time.textContent = Math.floor((Date.now()-startTime)/1000)+" 秒";
+
+  timer = setInterval(() => {
+    document.getElementById("time").textContent =
+      Math.floor((Date.now()-startTime)/1000) + " 秒";
   },1000);
 
-  setCharacter("walk.mp4");
+  generateQuest();
 
-  watchId = navigator.geolocation.watchPosition(pos => {
+  watchId = navigator.geolocation.watchPosition(async pos => {
 
     const lat = pos.coords.latitude;
     const lon = pos.coords.longitude;
 
-    if (!map) initMap(lat, lon);
+    if (!map) initMap(lat,lon);
 
-    marker.setLngLat([lon, lat]);
-    map.setCenter([lon, lat]);
+    marker.setLngLat([lon,lat]);
+    map.setCenter([lon,lat]);
 
-    path.push([lon, lat]);
-
-    if (map.getSource("route")) {
-      map.getSource("route").setData({
-        type:"Feature",
-        geometry:{type:"LineString",coordinates:path}
-      });
-    }
-
-    if (lastLat !== null) {
+    if (lastLat) {
       const d = getDistance(lastLat,lastLon,lat,lon);
+
       if (d > 0.01) {
         totalDistance += d;
-        distance.textContent = totalDistance.toFixed(3)+" km";
+        document.getElementById("distance").textContent =
+          totalDistance.toFixed(2)+" km";
+
+        /* クエスト達成 */
+        if (currentQuest && totalDistance >= currentQuest.target) {
+          addExp(currentQuest.reward);
+          generateQuest();
+        }
       }
     }
 
     lastLat = lat;
     lastLon = lon;
 
-    const spot = getNearbySpot(lat, lon);
-    currentSpot = spot ? spot.type : null;
-    spotName.textContent = "現在地：" + (spot ? spot.name : "なし");
+    /* 周辺イベント（軽量API例） */
+    const places = await getNearbyPlaces(lon,lat,"park");
 
-  }, ()=> alert("GPS許可してね"));
+    if (places.length > 0) {
+      document.getElementById("spotName").textContent =
+        "近く：" + places[0].text + "（イベント候補）";
+    }
+
+  },()=>alert("GPS許可してね"));
 };
 
-/* =========================
-   停止
-========================= */
-stopWalk.onclick = () => {
-
-  if (watchId !== null) {
-    navigator.geolocation.clearWatch(watchId);
-    watchId = null;
-  }
-
+/* ===== 停止 ===== */
+document.getElementById("stopBtn").onclick = () => {
+  if (watchId) navigator.geolocation.clearWatch(watchId);
   clearInterval(timer);
-
-  setCharacter("normal.mp4");
-};
-
-/* =========================
-   会話
-========================= */
-const talkData = {
-  normal:["のんびりいこう","いい天気だね"],
-  station:["電車乗る？","人多いかもね"],
-  park:["緑が気持ちいいね","ちょっと休む？"]
-};
-
-talkCharacter.onclick = () => {
-  const key = currentSpot || "normal";
-  const list = talkData[key];
-  talkText.textContent = list[Math.floor(Math.random()*list.length)];
 };
 
 });
